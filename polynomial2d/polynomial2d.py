@@ -1,4 +1,5 @@
-### Kornpob Bhirombhakdi
+# Kornpob Bhirombhakdi
+# kbhirombhakdi@stsci.edu
 
 import numpy as np
 import copy
@@ -126,6 +127,10 @@ class Polynomial2D:
             popt,pcov = curve_fit(self._n5,xx,yy)
         elif norder==6:
             popt,pcov = curve_fit(self._n6,xx,yy)
+        elif norder==7:
+            popt,pcov = curve_fit(self._n7,xx,yy)
+        elif norder==8:
+            popt,pcov = curve_fit(self._n8,xx,yy)
         else:
             popt,pcov = None,None
             print('Not support this norder')
@@ -185,6 +190,41 @@ class Polynomial2D:
         tmp += c60*np.power(x1,6) + c51*np.power(x1,5)*x2 + c42*np.power(x1,4)*np.power(x2,2)
         tmp += c33*np.power(x1,3)*np.power(x2,3) + c24*np.power(x1,2)*np.power(x2,4) 
         tmp += c15*x1*np.power(x2,5) + c06*np.power(x2,6)
+        return tmp
+    def _n7(self,x,c00,c10,c01,c20,c11,c02,
+            c30,c21,c12,c03,c40,c31,c22,c13,c04,
+            c50,c41,c32,c23,c14,c05,
+            c60,c51,c42,c33,c24,c15,c06,
+            c70,c61,c52,c43,c34,c25,c16,c07
+           ):
+        x1,x2=x
+        tmp = self._n6(x,c00,c10,c01,c20,c11,c02,
+                       c30,c21,c12,c03,c40,c31,c22,c13,c04,
+                       c50,c41,c32,c23,c14,c05,
+                       c60,c51,c42,c33,c24,c15,c06
+                      )
+        tmp += c70*np.power(x1,7) + c61*np.power(x1,6)*x2 + c52*np.power(x1,5)*np.power(x2,2)
+        tmp += c43*np.power(x1,4)*np.power(x2,3) + c34*np.power(x1,3)*np.power(x2,4) 
+        tmp += c25*np.power(x1,2)*np.power(x2,5) + c16*x1*np.power(x2,6) + c07*np.power(x2,7)
+        return tmp
+    def _n8(self,x,c00,c10,c01,c20,c11,c02,
+            c30,c21,c12,c03,c40,c31,c22,c13,c04,
+            c50,c41,c32,c23,c14,c05,
+            c60,c51,c42,c33,c24,c15,c06,
+            c70,c61,c52,c43,c34,c25,c16,c07,
+            c80,c71,c62,c53,c44,c35,c26,c17,c08
+           ):
+        x1,x2=x
+        tmp = self._n7(x,c00,c10,c01,c20,c11,c02,
+                       c30,c21,c12,c03,c40,c31,c22,c13,c04,
+                       c50,c41,c32,c23,c14,c05,
+                       c60,c51,c42,c33,c24,c15,c06,
+                       c70,c61,c52,c43,c34,c25,c16,c07
+                      )
+        tmp += c80*np.power(x1,8) + c71*np.power(x1,7)*x2 + c62*np.power(x1,6)*np.power(x2,2)
+        tmp += c53*np.power(x1,5)*np.power(x2,3) + c44*np.power(x1,4)*np.power(x2,4) 
+        tmp += c35*np.power(x1,3)*np.power(x2,5) + c26*np.power(x1,2)*np.power(x2,6) + c17*x1*np.power(x2,7)
+        tmp += c08*np.power(x2,8)
         return tmp
     ##########
     ##########
