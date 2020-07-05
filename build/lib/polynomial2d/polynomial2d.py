@@ -77,6 +77,7 @@ class Polynomial2D:
         self.model['NORDER'] = norder
         tmp = np.random.uniform(low=-1.,high=1.,size=self._coefsize())
         self.model['COEF'] = self._makecoef(tmp)
+        print('Simulate test')
     ##########
     ##########         
     def compute(self):
@@ -91,36 +92,36 @@ class Polynomial2D:
             tmpp = tmpcoef * np.power(x1,tmppowerx1) * np.power(x2,tmppowerx2)
             tmp += tmpp
         self.model['YFIT'] = tmp.copy()   
+        print('Perform compute')
     ##########
     ##########
     def fit(self,niter=1,rejection={'TURN':'OFF'}):
         if self.model['MASKFIT'] is None:
             self.model['MASKFIT'] = self.data['MASK'].copy()
-        for i in range(niter):
-            print('##########\n##########')
-            print('Iteration {0}\n'.format(i+1))
-            self._curvefit()
-            if rejection['TURN']=='ON':
-                self._outlierdetection()
-                print('No outlier detection implemented in this version\n')
-                print('##########\n##########')
-                break
-            else:
-                if niter > 1:
-                    print('set rejection={"TURN":"ON"} to iterate.\n')
-                break
+        if self.rescale['RESCALE'][0]:
+            tmpx1 = self.rescale['X1'].transform(self.data['X1'])
+            tmpx2 = self.rescale['X2'].transform(self.data['X2'])
+            tmpy = self.rescale['Y'].transform(self.data['Y'])
+            tmpm = self.data['MASK'].copy()
+            newobj = Polynomial2D(x1=tmpx1,x2=tmpx2,y=tmpy,mask=tmpm)
+            newobj.model = copy.deepcopy(self.model)
+        else:
+            newobj = copy.deepcopy(self)
+        newobj._curvefit()
+        newobj.compute()
+        newobj.model['YFIT'] = self.rescale['Y'].invtransform(newobj.model['YFIT'])
+        self.model = copy.deepcopy(newobj.model)
     ##########
     ##########
-    def _outlierdetection(self):
-        pass
     def _rescale(self):
         rescale = self.rescale['RESCALE']
         x1,x2,y = self.data['X1'].copy(),self.data['X2'].copy(),self.data['Y'].copy()
         KEY = {1:'X1',2:'X2',3:'Y'}
+        print('Rescale = {0}'.format(rescale[0]))
         if not rescale[0]:
-            print('Rescale = {0}'.format(rescale[0]))
             return
         for i in KEY:
+            print('')
             tmpdata = self.data[KEY[i]].copy()
             rescale_arg_x = rescale[i]
             obj = Rescale(data=tmpdata,**rescale_arg_x)
@@ -140,6 +141,7 @@ class Polynomial2D:
         # apply mask
         xx = x1[~m],x2[~m]
         yy = y[~m]
+        print('Perform fit')        
         if norder==0:
             popt,pcov = curve_fit(self._n0,xx,yy)
         elif norder==1:
