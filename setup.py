@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="polynomial2d",
-    version="1.2.0",
+    version="2.0.0",
     author="Kornpob Bhirombhakdi",
     author_email="kbhirombhakdi@stsci.edu",
     long_description=open("README.md").read(),

@@ -1,6 +1,7 @@
 # Kornpob Bhirombhakdi
 # kbhirombhakdi@stsci.edu
 
+from rescalex.rescale import Rescale
 import numpy as np
 import copy
 
@@ -10,15 +11,23 @@ class Polynomial2D:
     ### Polynomial2D is a class containing data and methods to represent 2D polynomial function: y = f(x1,x2,norder,[cij]), where fij = cij * x1**i * x2**j and y = sum_{i=0}^{i=norder} sum_{j=0}^{j=i} fkj given k = i-j and k >= 0.
     ### Polynomial2D().data = dict of data. These data are inputs, and will not be modified.
     ### Polynomial2D().model = dict of data associated to a specified 2D polynomial model.
+    ### Polynomial2D().rescale = dict of specification for rescaling X1,X2,Y. 
+    ###    This can be specified by Polynomial2D(rescale=(a=bool,b,c,d)) where a = bool to specify whether rescaling would be performed.
+    ###    For b,c,d, each is a dict specifying arguments for rescalex.rescale.Rescale for X1,X2,Y respectively.
+    ###    For example, b = {'method'='linear','minmax'=(-1.,1.),'params':'None'}.
+    ###    Set b = None for not performing rescale with X1, and vice versa.
     ### Polynomial2D().compute() = compute YFIT given a model and data.
     ### Polynomial2D().fit() = fit for 2D polynomial coefficients given a model and data. This method includes an interation routine for outlier detection using outlierdetection.py.
     ### Polynomial2D().test() = randomly simulate x1, x2, and coefficients given nsize and norder.
     ### Polynomial2D().data['MASK'] keeps the original mask of data with False as good data.
     ### Polynomial2D().model['MASKFIT'] keeps the latest mask from iterative fitting data and rejecting outliers.
+    Note: if rescale is performed, Polynomial2D().model['COEF'] results from rescaled space
+    while Polynomial2D().model['YFIT'] results in non-rescaled spcae.
     #########################################
-    ### call: obj = Polynomial2D(x1,x2,y,mask,norder,coef)
+    ### call: obj = Polynomial2D(x1,x2,y,mask,norder,coef,rescale)
     ### call: obj.data['key'] for key = 'X1','X2','Y','MASK'
     ### call: obj.model['key'] for key = 'NORDER','COEF',...(created using model)...
+    ### call: obj.rescale for examining rescaling results
     x1,x2,y,mask must have the same dimensions.
     mask, if not specified, is set to all False (= good data).
     norder is non-negative integer representing the highest polynomial order.
@@ -38,7 +47,8 @@ class Polynomial2D:
     use obj.compute() to get yfit.
     """
     def __init__(self,x1=None,x2=None,y=None,mask=None,
-                 norder=None,coef=None
+                 norder=None,coef=None,
+                 rescale=(False,None,None,None)
                 ):
         if (mask is None) and (x1 is not None):
                 mask = np.full_like(x1,False,dtype=bool)
@@ -52,6 +62,12 @@ class Polynomial2D:
                       'YFIT':None,
                       'MASKFIT':None
                      }
+        self.rescale = {'RESCALE':rescale,
+                        'X1':None,
+                        'X2':None,
+                        'Y':None
+                       }
+        self._rescale()
     ##########
     ##########
     def test(self,nsize=2,norder=2):
@@ -93,8 +109,23 @@ class Polynomial2D:
                 if niter > 1:
                     print('set rejection={"TURN":"ON"} to iterate.\n')
                 break
+    ##########
+    ##########
     def _outlierdetection(self):
         pass
+    def _rescale(self):
+        rescale = self.rescale['RESCALE']
+        x1,x2,y = self.data['X1'].copy(),self.data['X2'].copy(),self.data['Y'].copy()
+        KEY = {1:'X1',2:'X2',3:'Y'}
+        if not rescale[0]:
+            print('Rescale = {0}'.format(rescale[0]))
+            return
+        for i in KEY:
+            tmpdata = self.data[KEY[i]].copy()
+            rescale_arg_x = rescale[i]
+            obj = Rescale(data=tmpdata,**rescale_arg_x)
+            obj.compute()
+            self.rescale[KEY[i]] = copy.deepcopy(obj)
     def _curvefit(self):
         from scipy.optimize import curve_fit
         x1 = self.data['X1'].copy()
@@ -102,17 +133,13 @@ class Polynomial2D:
         y = self.data['Y'].copy()
         norder = self.model['NORDER'] 
         m = self.model['MASKFIT']
-        
         # check nan
         mnan = np.where(~np.isfinite(y))
-        
         # update mask
         m[mnan] = True
-        
         # apply mask
         xx = x1[~m],x2[~m]
         yy = y[~m]
-        
         if norder==0:
             popt,pcov = curve_fit(self._n0,xx,yy)
         elif norder==1:
