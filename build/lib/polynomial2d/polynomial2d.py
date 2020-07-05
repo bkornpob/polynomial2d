@@ -12,22 +12,30 @@ class Polynomial2D:
     ### Polynomial2D().data = dict of data. These data are inputs, and will not be modified.
     ### Polynomial2D().model = dict of data associated to a specified 2D polynomial model.
     ### Polynomial2D().rescale = dict of specification for rescaling X1,X2,Y. 
-    ###    This can be specified by Polynomial2D(rescale=(a=bool,b,c,d)) where a = bool to specify whether rescaling would be performed.
+    ###    This can be specified by Polynomial2D(rescale=(a,b,c,d)) where a = bool to specify whether rescaling would be performed.
     ###    For b,c,d, each is a dict specifying arguments for rescalex.rescale.Rescale for X1,X2,Y respectively.
     ###    For example, b = {'method'='linear','minmax'=(-1.,1.),'params':'None'}.
     ###    Set b = None for not performing rescale with X1, and vice versa.
+    ### Polynomial2D().sigclip = dict of specification for sigma-cipping.
+    ###    This can be specified by Polynomial2D(sigclip=(bool,niter,sigma)) where 
+    ###       bool to specify whether sigma-clipping would be performed.
+    ###       niter = numbers of iteration
+    ###       sigma = sigma clipping level
+    ### Polynomial2D().sim = dict of X1,X2,Y for a simulation using COEF
     ### Polynomial2D().compute() = compute YFIT given a model and data.
     ### Polynomial2D().fit() = fit for 2D polynomial coefficients given a model and data. This method includes an interation routine for outlier detection using outlierdetection.py.
+    ### Polynomial2D().simulate() = simulate using COEF and obj.sim['X1'],obj.sim['X2']. Result is kept in obj.sim['Y'].
     ### Polynomial2D().test() = randomly simulate x1, x2, and coefficients given nsize and norder.
     ### Polynomial2D().data['MASK'] keeps the original mask of data with False as good data.
-    ### Polynomial2D().model['MASKFIT'] keeps the latest mask from iterative fitting data and rejecting outliers.
+    ### Polynomial2D().model['MASKFIT'] updated mask from iterative fitting with sigclip 
     Note: if rescale is performed, Polynomial2D().model['COEF'] results from rescaled space
     while Polynomial2D().model['YFIT'] results in non-rescaled spcae.
     #########################################
-    ### call: obj = Polynomial2D(x1,x2,y,mask,norder,coef,rescale)
+    ### call: obj = Polynomial2D(x1,x2,y,mask,norder,coef,rescale,sigclip)
     ### call: obj.data['key'] for key = 'X1','X2','Y','MASK'
     ### call: obj.model['key'] for key = 'NORDER','COEF',...(created using model)...
     ### call: obj.rescale for examining rescaling results
+    ### call: obj.sigclip for examining sigma-clipping setting
     x1,x2,y,mask must have the same dimensions.
     mask, if not specified, is set to all False (= good data).
     norder is non-negative integer representing the highest polynomial order.
@@ -36,10 +44,14 @@ class Polynomial2D:
     ### call: obj.compute() for computing polynomial2D using x1,x2,coef
     ### call: obj.model['YFIT'] for the output
     #########################################
-    ### call: obj.fit(niter,rejection={'TURN':'OFF'}) for fitting polynomial2D using x1,x2,y,maskfit,norder
+    ### call: obj.fit() for fitting polynomial2D using x1,x2,y,maskfit,norder
+    Sigma clipping can be specify by obj.sigclip
     obj.model['MASKFIT'] = obj.data['MASK'], if not specified.
     maskfit = False for good data, and is used for the fitting.
-    maskfit, after iterations with rejection, is updated as the last iteration.
+    maskfit, after iterations with sigma clipping, is updated as the last iteration.
+    #########################################
+    ### call: obj.simulate() for simulating polynomial2D using obj.model['COEF'], obj.sim['X1'], obj.sim['X2'].
+    obj.sim['Y'] keeps the result.
     #########################################
     ### call: obj.test(nsize,norder) for simulate x1,x2,coef
     x1,x2 are 1d-vectors of size = nsize, each.
@@ -48,7 +60,8 @@ class Polynomial2D:
     """
     def __init__(self,x1=None,x2=None,y=None,mask=None,
                  norder=None,coef=None,
-                 rescale=(False,None,None,None)
+                 rescale=(False,None,None,None),
+                 sigclip=(False,None,None)
                 ):
         if (mask is None) and (x1 is not None):
                 mask = np.full_like(x1,False,dtype=bool)
@@ -67,7 +80,23 @@ class Polynomial2D:
                         'X2':None,
                         'Y':None
                        }
+        self.sigclip = sigclip
+        self.sim = {'X1':None,'X2':None,'Y':None}
         self._rescale()
+    ##########
+    ##########
+    def simulate(self):
+        x1,x2 = self.sim['X1'],self.sim['X2']
+        if self.rescale['RESCALE'][0]:
+            x1,x2 = self.rescale['X1'].transform(x1),self.rescale['X2'].transform(x2)
+        obj = Polynomial2D(x1=x1,x2=x2,y=None,mask=None)
+        obj.model = copy.deepcopy(self.model)
+        obj.compute()
+        y = obj.model['YFIT']
+        if self.rescale['RESCALE'][0]:
+            y = self.rescale['Y'].invtransform(y)
+        self.sim['Y'] = y.copy()
+        print('Simulate...')
     ##########
     ##########
     def test(self,nsize=2,norder=2):
@@ -107,19 +136,38 @@ class Polynomial2D:
             newobj.model = copy.deepcopy(self.model)
         else:
             newobj = copy.deepcopy(self)
-        newobj._curvefit()
-        newobj.compute()
-        newobj.model['YFIT'] = self.rescale['Y'].invtransform(newobj.model['YFIT'])
+        # sigclip
+        doclip,niter,sigma_level = self.sigclip
+        sentinel = True
+        counter = 0
+        while sentinel:
+            counter += 1
+            newobj._curvefit()
+            newobj.compute()
+            print('Sigma clipping = {0}, sigma level = {1}, iter #{2}'.format(doclip,sigma_level,counter))
+            if not doclip or counter>=niter:
+                break
+            else:
+                newobj._sigclip(sigma_level)
+        if self.rescale['RESCALE'][0]:
+            newobj.model['YFIT'] = self.rescale['Y'].invtransform(newobj.model['YFIT'])
         self.model = copy.deepcopy(newobj.model)
     ##########
     ##########
+    def _sigclip(self,sigma_level):
+        tmp = self.data['Y'] - self.model['YFIT']
+        std = np.std(tmp)
+        n_sig = np.abs(tmp)/std
+        tmpmask = (n_sig > sigma_level) # good data == False
+        self.model['MASKFIT'] = (self.model['MASKFIT'] | tmpmask)
+        print('Update maskfit')
     def _rescale(self):
         rescale = self.rescale['RESCALE']
-        x1,x2,y = self.data['X1'].copy(),self.data['X2'].copy(),self.data['Y'].copy()
         KEY = {1:'X1',2:'X2',3:'Y'}
         print('Rescale = {0}'.format(rescale[0]))
         if not rescale[0]:
             return
+        x1,x2,y = self.data['X1'].copy(),self.data['X2'].copy(),self.data['Y'].copy()        
         for i in KEY:
             print('')
             tmpdata = self.data[KEY[i]].copy()
