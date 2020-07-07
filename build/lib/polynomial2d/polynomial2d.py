@@ -14,7 +14,7 @@ class Polynomial2D:
     ### Polynomial2D().rescale = dict of specification for rescaling X1,X2,Y. 
     ###    This can be specified by Polynomial2D(rescale=(a,b,c,d)) where a = bool to specify whether rescaling would be performed.
     ###    For b,c,d, each is a dict specifying arguments for rescalex.rescale.Rescale for X1,X2,Y respectively.
-    ###    For example, b = {'method'='linear','minmax'=(-1.,1.),'params':'None'}.
+    ###    For example, b = {'method':'linear','minmax':(-1.,1.),'params':'None'}.
     ###    Set b = None for not performing rescale with X1, and vice versa.
     ### Polynomial2D().sigclip = dict of specification for sigma-cipping.
     ###    This can be specified by Polynomial2D(sigclip=(bool,niter,sigma)) where 
@@ -91,7 +91,7 @@ class Polynomial2D:
             x1,x2 = self.rescale['X1'].transform(x1),self.rescale['X2'].transform(x2)
         obj = Polynomial2D(x1=x1,x2=x2,y=None,mask=None)
         obj.model = copy.deepcopy(self.model)
-        obj.compute()
+        obj.compute(rescale=False)
         y = obj.model['YFIT']
         if self.rescale['RESCALE'][0]:
             y = self.rescale['Y'].invtransform(y)
@@ -109,9 +109,13 @@ class Polynomial2D:
         print('Simulate test')
     ##########
     ##########         
-    def compute(self):
-        x1 = self.data['X1']
-        x2 = self.data['X2']
+    def compute(self,rescale=True):
+        if rescale:
+            x1 = self.rescale['X1'].transform(self.data['X1'])
+            x2 = self.rescale['X2'].transform(self.data['X2'])
+        else:
+            x1 = self.data['X1']
+            x2 = self.data['X2']
         norder = self.model['NORDER']
         coef = self.model['COEF']
         tmp = np.full_like(x1,0.,dtype=float)
@@ -120,11 +124,14 @@ class Polynomial2D:
             tmpcoef = coef[i]
             tmpp = tmpcoef * np.power(x1,tmppowerx1) * np.power(x2,tmppowerx2)
             tmp += tmpp
-        self.model['YFIT'] = tmp.copy()   
+        if rescale:
+            self.model['YFIT'] = self.rescale['Y'].invtransform(tmp)
+        else:
+            self.model['YFIT'] = tmp
         print('Perform compute')
     ##########
     ##########
-    def fit(self,niter=1,rejection={'TURN':'OFF'}):
+    def fit(self):
         if self.model['MASKFIT'] is None:
             self.model['MASKFIT'] = self.data['MASK'].copy()
         if self.rescale['RESCALE'][0]:
@@ -143,7 +150,7 @@ class Polynomial2D:
         while sentinel:
             counter += 1
             newobj._curvefit()
-            newobj.compute()
+            newobj.compute(rescale=False)
             print('Sigma clipping = {0}, sigma level = {1}, iter #{2}'.format(doclip,sigma_level,counter))
             if not doclip or counter>=niter:
                 break
